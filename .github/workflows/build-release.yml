@@ -61,7 +61,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
         with:
-          packages: 'platform-tools platforms;android-37 platforms;android-37.1 build-tools;37.0.0'
+          packages: 'platform-tools platforms;android-37.0 platforms;android-37.1 build-tools;37.0.0'
       - name: Build matching API and SDK libraries
         working-directory: host-sdk
         run: |
