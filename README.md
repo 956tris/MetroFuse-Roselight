@@ -35,3 +35,7 @@ python tests/check_native_package.py
 Artifacts and SHA-256 checksums are in `build/outputs/plugins`. The build checks cover provider shelf selection, library grouping, and package isolation. Version 1.0.1 adds source selection, catalog/library search scopes, page and artwork transitions, and revised mobile navigation. Switching sources requires a host with the ui.frontends/v1 service; preview 003 can render the interface but does not provide that service. Live verification of version 1.0.1 is pending.
 
 Design references: [Apple’s mobile design announcement](https://www.apple.com/newsroom/2025/06/apple-introduces-a-delightful-and-elegant-new-software-design/) and the [Apple Music web guide](https://support.apple.com/guide/music-web/welcome/web). MetroFuse plugin code is derived from MetroFlow. See `SOURCE` and `LICENSE`.
+
+## Versioned GitHub Actions builds
+
+The Roselight versioned builds workflow runs for `v*` tags and manual dispatches. It builds a pinned matching MetroFuse API/SDK, runs native tests and package checks, and uploads `roselight-VERSION.apk`, `roselight-VERSION.jar`, build metadata and checksums as versioned Actions artifacts. A tag must match `native/manifest.json`; edit that version before pushing the corresponding release tag. Successful tag builds automatically publish normal GitHub releases. Manual builds default to `publish=false`; set it to true only when the checked packages should be published. The optional host ref must provide the matching API and Compose ABI.

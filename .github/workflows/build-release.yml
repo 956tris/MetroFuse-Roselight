@@ -1,0 +1,108 @@
+name: Roselight versioned builds
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Plugin version, matching native/manifest.json
+        required: true
+        default: '1.0.1'
+        type: string
+      publish:
+        description: Publish successful packages to the versioned release
+        required: true
+        default: false
+        type: boolean
+      host_ref:
+        description: Matching MetroFuse API/SDK commit or tag
+        required: true
+        default: '5c78743d1c9fd0c954e25d377f8f8a89ac048bb3'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: roselight-${{ github.ref }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      HOST_REF: ${{ inputs.host_ref || '5c78743d1c9fd0c954e25d377f8f8a89ac048bb3' }}
+      REQUESTED_VERSION: ${{ inputs.version }}
+      RELEASE_EVENT: ${{ github.event_name }}
+      RELEASE_REF: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Validate release version
+        id: version
+        run: python3 tooling/prepare_release.py --validate-only
+      - name: Check out matching host API and SDK
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: 956tris/MetroFuse
+          ref: ${{ env.HOST_REF }}
+          path: host-sdk
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+        with:
+          packages: 'platform-tools platforms;android-37 platforms;android-37.1 build-tools;37.0.0'
+      - name: Build matching API and SDK libraries
+        working-directory: host-sdk
+        run: |
+          chmod +x gradlew
+          ./gradlew :plugin-api:desktopJar :plugin-sdk:desktopJar --no-daemon --no-configuration-cache --no-parallel --max-workers=2
+      - name: Build and test native packages
+        run: |
+          chmod +x gradlew
+          ./gradlew :native:desktopTest :native:packagePluginJar :native:packagePluginApk \
+            "-PmetrofuseApiJar=$PWD/host-sdk/plugin-api/build/libs/plugin-api-desktop-1.1.0.jar" \
+            "-PmetrofuseSdkJar=$PWD/host-sdk/plugin-sdk/build/libs/plugin-sdk-desktop-1.1.0.jar" \
+            --no-daemon --no-configuration-cache --no-parallel --max-workers=2
+      - name: Check Android package boundary and prepare versioned artifacts
+        run: |
+          python3 tests/check_native_package.py
+          python3 tooling/prepare_release.py
+          (cd release-assets && sha256sum -c SHA256SUMS-*.txt)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: roselight-${{ steps.version.outputs.version }}-build-${{ github.run_number }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: roselight-test-results-${{ github.run_number }}
+          path: native/build/test-results/desktopTest/*
+          if-no-files-found: ignore
+      - name: Publish checked versioned packages
+        if: github.event_name == 'push' || inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PLUGIN_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          tag="v$PLUGIN_VERSION"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh release upload "$tag" release-assets/* --clobber
+            gh release edit "$tag" --draft=false --prerelease=false --latest --title "Roselight Music $PLUGIN_VERSION" --notes-file tooling/release-notes.md
+          else
+            gh release create "$tag" release-assets/* --target "$GITHUB_SHA" --title "Roselight Music $PLUGIN_VERSION" --notes-file tooling/release-notes.md --latest
+          fi

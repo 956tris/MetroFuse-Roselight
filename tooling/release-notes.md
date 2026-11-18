@@ -1,0 +1,5 @@
+Native Roselight Music packages for Android and desktop, built by GitHub Actions after navigation tests, packaged-manifest validation and Android package-isolation checks. Build metadata records the source and host SDK commits. Live rendering and playback are not verified by these checks.
+
+Install MetroFuse KMP Beta first. Import the versioned Roselight APK through MetroFuse Settings > Plugins > Import or update plugin. **Do not install a plugin APK with Android's package installer.** On desktop, import the versioned JAR through Plugins. Enable Roselight and choose it under App interface. Source selection requires the host ui.frontends/v1 service and the matching API 1.1.0/Compose ABI.
+
+Back up your library, playlists and settings before migration, and use the original interface while updating the host and plugins. Beta instability, crashes, plugin incompatibility, incomplete features and migration data loss are possible. Provider account, library, radio, lyrics and playback features depend on the host and selected provider. Use the host restore icon to return to the original interface if a screen misbehaves.
