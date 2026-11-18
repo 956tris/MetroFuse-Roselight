@@ -1,0 +1,19 @@
+{
+  "id": "dev.metrofuse.roselight.native",
+  "name": "Roselight Music",
+  "version": "1.0.1",
+  "author": "MetroFuse",
+  "api": "1.1.0",
+  "runtime": "kotlin",
+  "platforms": [
+    "desktop",
+    "android"
+  ],
+  "entryClass": "dev.metrofuse.roselight.RoselightPlugin",
+  "composeAbi": "kotlin-2.4.21_compose-1.13.0-beta02_api-1.1.0",
+  "capabilities": [
+    "ui"
+  ],
+  "description": "Apple Music-inspired native interface for MetroFuse, with glass controls on Android and web-style desktop navigation.",
+  "integrity": {}
+}
