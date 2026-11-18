@@ -8,7 +8,7 @@ on:
       version:
         description: Plugin version, matching native/manifest.json
         required: true
-        default: '1.0.1'
+        default: '1.0.9'
         type: string
       publish:
         description: Publish successful packages to the versioned release
@@ -18,7 +18,7 @@ on:
       host_ref:
         description: Matching MetroFuse API/SDK commit or tag
         required: true
-        default: '5c78743d1c9fd0c954e25d377f8f8a89ac048bb3'
+        default: 'f961b46c21526bc9a3775b40720fc0faeca9669a'
         type: string
 
 permissions:
@@ -35,7 +35,7 @@ jobs:
     permissions:
       contents: write
     env:
-      HOST_REF: ${{ inputs.host_ref || '5c78743d1c9fd0c954e25d377f8f8a89ac048bb3' }}
+      HOST_REF: ${{ inputs.host_ref || 'f961b46c21526bc9a3775b40720fc0faeca9669a' }}
       REQUESTED_VERSION: ${{ inputs.version }}
       RELEASE_EVENT: ${{ github.event_name }}
       RELEASE_REF: ${{ github.ref_name }}

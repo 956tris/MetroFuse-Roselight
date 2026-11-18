@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,7 +20,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -48,7 +46,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.metrofuse.api.HomeItem
 import dev.metrofuse.api.HomeShelf
 import dev.metrofuse.api.PlaybackState
 import dev.metrofuse.api.Player
@@ -85,6 +82,7 @@ private val libraryLinks =
         Destination("artists", "Artists", "profile"),
         Destination("albums", "Albums", "library"),
         Destination("songs", "Songs", "note"),
+        Destination("playlists", "Playlists", "library"),
     )
 
 internal fun pageLabel(
@@ -168,6 +166,7 @@ internal fun DesktopSidebar(
     selectSection: (String) -> Unit,
     search: (String) -> Unit,
     settings: () -> Unit,
+    includePlaylists: Boolean,
 ) {
     val colors = MaterialTheme.colorScheme
     Row(Modifier.width(242.dp).fillMaxHeight().background(colors.surfaceVariant)) {
@@ -188,7 +187,7 @@ internal fun DesktopSidebar(
             Spacer(Modifier.height(10.dp))
             destinations.take(3).forEach { destination -> SidebarItem(destination, page == destination.id) { select(destination.id) } }
             Text("Library", Modifier.padding(start = 10.dp, top = 20.dp, bottom = 3.dp), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            LibraryLinks(if (page == "library") section else "", selectSection)
+            LibraryLinks(if (page == "library") section else "", selectSection, includePlaylists)
             Spacer(Modifier.height(10.dp))
             SidebarItem(Destination("settings", "Settings", "settings"), false, settings)
         }
@@ -200,9 +199,12 @@ internal fun DesktopSidebar(
 internal fun LibraryLinks(
     section: String,
     select: (String) -> Unit,
+    includePlaylists: Boolean,
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-        libraryLinks.forEach { destination -> SidebarItem(destination, destination.id == section) { select(destination.id) } }
+        libraryLinks.filter { includePlaylists || it.id != "playlists" }.forEach { destination ->
+            SidebarItem(destination, destination.id == section) { select(destination.id) }
+        }
     }
 }
 
@@ -227,51 +229,6 @@ private fun SidebarItem(
     ) {
         Glyph(destination.icon, "", Modifier.size(17.dp), colors.primary)
         Text(destination.title, fontSize = 14.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
-    }
-}
-
-@Composable
-internal fun FeaturedShelf(
-    shelf: HomeShelf,
-    wide: Boolean,
-    artwork: UiArtworkEnvironment,
-    open: (HomeItem) -> Unit,
-) {
-    val colors = MaterialTheme.colorScheme
-    val entries = shelf.items.filter { it.info() != null }.take(16)
-    if (entries.isEmpty()) return
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(shelf.title, fontSize = 23.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.45).sp)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(if (wide) 18.dp else 12.dp)) {
-            items(entries) { entry ->
-                val info = entry.info() ?: return@items
-                Column(
-                    Modifier.width(if (wide) 340.dp else 278.dp).clip(RoundedCornerShape(10.dp)).clickable { open(entry) },
-                    verticalArrangement = Arrangement.spacedBy(5.dp),
-                ) {
-                    Text(info.title, fontSize = 21.sp, lineHeight = 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (info.subtitle.isNotBlank()) {
-                        Text(
-                            info.subtitle,
-                            color = colors.onSurfaceVariant,
-                            fontSize = 14.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1.54f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(colors.surfaceVariant),
-                    ) {
-                        artwork.Artwork(info.artwork, info.title, Modifier.fillMaxSize())
-                        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x2C000000)))))
-                    }
-                }
-            }
-        }
     }
 }
 

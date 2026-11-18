@@ -2,6 +2,8 @@ package dev.metrofuse.roselight
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -31,11 +33,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -72,6 +74,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -123,6 +126,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -163,9 +167,9 @@ private fun MusicTheme(
             darkColorScheme(
                 primary = Color(0xFFFF496C),
                 onPrimary = Color.White,
-                background = Color(0xFF111112),
-                surface = Color(0xFF171719),
-                surfaceVariant = Color(0xFF262629),
+                background = Color.Black,
+                surface = Color(0xFF1C1C1E),
+                surfaceVariant = Color(0xFF2C2C2E),
                 onSurface = Color(0xFFF6F5F7),
                 onSurfaceVariant = Color(0xFFA5A4AB),
             )
@@ -202,6 +206,7 @@ internal fun HomeItem.info(): CollectionInfo? =
         else -> null
     }
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 private fun Roselight(
     ui: UiContext,
@@ -210,9 +215,10 @@ private fun Roselight(
     val environment = checkNotNull(ui.extensions as? UiArtworkEnvironment) { "Roselight requires the host UI artwork environment" }
     val playback by ui.player.state.collectAsState()
     val metadata by ui.metadata.collectAsState()
-    val current = if (metadata.id == playback.track.id) metadata else playback.track
+    val current = remember(playback.track, metadata) { playerTrack(playback.track, metadata) }
     val shelves by environment.homeShelves.collectAsState(emptyList())
     var accountName by remember { mutableStateOf("") }
+    var frontendLoggedIn by remember { mutableStateOf(false) }
     var frontendId by remember { mutableStateOf("") }
     var frontendTitle by remember { mutableStateOf("") }
     var frontendBridge by remember { mutableStateOf(false) }
@@ -222,6 +228,7 @@ private fun Roselight(
         try {
             val source = context.callService("ui.source/v1", buildJsonObject {})
             accountName = source["accountName"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            frontendLoggedIn = source["loggedIn"]?.jsonPrimitive?.booleanOrNull == true
             frontendId = source["id"]?.jsonPrimitive?.contentOrNull.orEmpty()
             frontendTitle = source["title"]?.jsonPrimitive?.contentOrNull.orEmpty()
             frontendBridge =
@@ -232,6 +239,7 @@ private fun Roselight(
             throw cancelled
         } catch (_: Exception) {
             accountName = ""
+            frontendLoggedIn = false
         }
     }
     val scope = rememberCoroutineScope()
@@ -245,6 +253,25 @@ private fun Roselight(
     var results by remember { mutableStateOf(SearchResult(emptyList())) }
     var offset by remember { mutableIntStateOf(0) }
     val library by remember(offset) { environment.library(offset, 100) }.collectAsState(emptyList())
+    val savedLibrary = remember(frontendId, accountName, frontendLoggedIn) {
+        frontendId.takeIf(String::isNotBlank)?.let { FrontendLibrary(context, it) }
+    }
+    val likedSongs = remember(frontendId, accountName, frontendLoggedIn) {
+        frontendId.takeIf(String::isNotBlank)?.let { FrontendLibrary(context, it, likedSongsOnly = true) }
+    }
+    val frontendLibrary = if (librarySection == "songs") likedSongs else savedLibrary
+    LaunchedEffect(page, librarySection, frontendLibrary) {
+        if (page == "library" && frontendLibrary != null) {
+            if (!frontendLibrary.loaded) frontendLibrary.load()
+            // Some providers paginate each item type separately.
+            while (!frontendLibrary.loading && !frontendLibrary.failed && !frontendLibrary.hostUpdateRequired &&
+                frontendLibrary.continuation != null &&
+                frontendLibrary.items.none { it.info()?.appearsInLibrarySection(librarySection) == true }
+            ) {
+                frontendLibrary.load()
+            }
+        }
+    }
     var collection by remember { mutableStateOf<CollectionInfo?>(null) }
     var collectionOrigin by remember { mutableStateOf("home") }
     var collectionTracks by remember { mutableStateOf(emptyList<Track>()) }
@@ -310,6 +337,16 @@ private fun Roselight(
         page = target
     }
 
+    fun backFromCollection() {
+        val section = librarySection
+        val libraryOffset = offset
+        navigate(collectionOrigin)
+        if (collectionOrigin == "library") {
+            librarySection = section
+            offset = libraryOffset
+        }
+    }
+
     fun open(info: CollectionInfo) {
         if (page != "collection") collectionOrigin = page
         val generation = ++collectionGeneration
@@ -333,7 +370,7 @@ private fun Roselight(
                             )["item"]
                             ?.jsonObject
                     if (generation != collectionGeneration) return@launch
-                    collectionTracks = item?.get("tracks")?.let { codec.decodeFromJsonElement<List<Track>>(it) }.orEmpty()
+                    val tracks = item?.get("tracks")?.let { codec.decodeFromJsonElement<List<Track>>(it) }.orEmpty()
                     failed = item == null
                     if (item != null) {
                         collection =
@@ -346,6 +383,7 @@ private fun Roselight(
                                 artwork = item["artwork"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: info.artwork,
                             )
                     }
+                    collectionTracks = if (info.kind == "album") tracks.withAlbumArtwork(collection?.artwork.orEmpty()) else tracks
                 } catch (
                     cancelled: CancellationException,
                 ) {
@@ -367,7 +405,8 @@ private fun Roselight(
     }
     DisposableEffect(Unit) { onDispose { job?.cancel() } }
     val dark = isSystemInDarkTheme()
-    val stream = remember(page) { LazyListState() }
+    val streams = remember { mutableMapOf<Pair<String, String>, LazyListState>() }
+    val stream = streams.getOrPut(page to if (page == "library") librarySection else "") { LazyListState() }
     var compactDock by remember(page) { mutableStateOf(false) }
     val pageMotion = remember { Animatable(1f) }
     LaunchedEffect(page, librarySection, frontendId) {
@@ -382,9 +421,17 @@ private fun Roselight(
         }
     }
     MusicTheme(dark) {
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = foreground) {
+        SharedTransitionLayout(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            val artworkTransition = this
             BoxWithConstraints(Modifier.fillMaxSize()) {
+                val android = environment.platform == "android"
                 val wide = environment.platform == "desktop" && maxWidth >= 720.dp
+                val androidCollection = android && page == "collection"
+                val albumDetail = androidCollection &&
+                    (collection?.kind == "album" || (collection?.kind == "local" && librarySection != "artists"))
+                val albumGrid = android && page == "library" && librarySection in setOf("albums", "recent")
+                val artistList = android && page == "library" && librarySection == "artists"
+                val denseList = androidCollection || artistList || (android && (page == "search" || (page == "library" && librarySection == "songs")))
                 if (showFrontends) {
                     FrontendPicker(context, { showFrontends = false }) { chosen ->
                         frontendId = chosen.selected
@@ -405,7 +452,7 @@ private fun Roselight(
                         }, { input ->
                             query = input
                             if (page != "search") navigate("search")
-                        }, { ui.navigate("settings") })
+                        }, { ui.navigate("settings") }, includePlaylists = frontendLibrary != null)
                     }
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         if (wide) {
@@ -429,22 +476,47 @@ private fun Roselight(
                             state = stream,
                             contentPadding =
                                 PaddingValues(
-                                    start = if (wide) 36.dp else 20.dp,
-                                    end = if (wide) 36.dp else 20.dp,
-                                    top = if (wide) 24.dp else 18.dp,
+                                    start = if (wide) 36.dp else if (android) 16.dp else 20.dp,
+                                    end = if (wide) 36.dp else if (android) 16.dp else 20.dp,
+                                    top = if (wide) 24.dp else if (androidCollection) 0.dp else if (android) 16.dp else 18.dp,
                                     bottom =
                                         if (wide) {
                                             32.dp
+                                        } else if (android) {
+                                            androidTabHeight + if (current.id.isBlank()) 12.dp else androidMiniPlayerHeight + 12.dp
                                         } else if (current.id.isBlank()) {
                                             88.dp
                                         } else {
                                             153.dp
                                         },
                                 ),
-                            verticalArrangement = Arrangement.spacedBy(if (wide) 28.dp else 20.dp),
+                            verticalArrangement = Arrangement.spacedBy(
+                                when {
+                                    albumDetail || denseList -> 0.dp
+                                    albumGrid -> 4.dp
+                                    wide -> 28.dp
+                                    else -> 20.dp
+                                },
+                            ),
                         ) {
-                            item {
-                                Row(
+                            if (!androidCollection) item {
+                                if (android) {
+                                    AndroidPageHeader(
+                                        title = pageLabel(page, librarySection),
+                                        source = frontendTitle.takeIf { page == "home" },
+                                        account = accountName,
+                                        onChooseSource = { showFrontends = true },
+                                        onSettings = { ui.navigate("settings") },
+                                        back = if (page == "library" && librarySection != "recent") {
+                                            {
+                                                librarySection = "recent"
+                                                offset = 0
+                                            }
+                                        } else {
+                                            null
+                                        },
+                                    )
+                                } else Row(
                                     Modifier.fillMaxWidth().padding(end = if (wide) 0.dp else 38.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
@@ -516,16 +588,27 @@ private fun Roselight(
                             }
                             if (page == "library" && !wide && librarySection == "recent") {
                                 item {
-                                    MobileLibraryLinks { section ->
+                                    MobileLibraryLinks(includePlaylists = frontendLibrary != null) { section ->
                                         librarySection = section
                                         offset = 0
                                     }
                                 }
                                 item {
-                                    Text("Recently Added", fontSize = 25.sp, letterSpacing = (-0.5).sp, fontWeight = FontWeight.Bold)
+                                    EditorialHeading("Recently Added")
                                 }
                             }
-                            when (page) {
+                            if (page == "library" && frontendLibrary != null) {
+                                providerLibrary(
+                                    library = frontendLibrary,
+                                    section = librarySection,
+                                    wide = wide,
+                                    player = ui.player,
+                                    artwork = environment,
+                                    open = ::open,
+                                    load = { scope.launch { frontendLibrary.load() } },
+                                    retry = { scope.launch { frontendLibrary.retry() } },
+                                )
+                            } else when (page) {
                                 "home", "new", "radio" -> {
                                     val filtered =
                                         shelvesForPage(shelves, page).ifEmpty {
@@ -535,19 +618,6 @@ private fun Roselight(
                                                 emptyList()
                                             }
                                         }
-                                    val featureShelf = filtered.firstOrNull()
-                                    if (featureShelf != null) {
-                                        item {
-                                            FeaturedShelf(featureShelf, wide, environment, ::openItem)
-                                        }
-                                    }
-                                    if (page == "radio" && "radio" in ui.player.capabilities && current.id.isNotBlank()) {
-                                        item {
-                                            TextButton(onClick = { (ui.player as? UiPlaybackControls)?.startTrackRadio() }) {
-                                                Text("Start a station from this song")
-                                            }
-                                        }
-                                    }
                                     if (filtered.isEmpty()) {
                                         item {
                                             Text(
@@ -563,57 +633,16 @@ private fun Roselight(
                                             TextButton(onClick = { ui.navigate("plugins") }) { Text(stringResource(Res.string.plugins)) }
                                         }
                                     }
-                                    filtered.drop(1).forEach { shelf ->
+                                    filtered.forEachIndexed { index, shelf ->
                                         item {
-                                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                                Text(
-                                                    shelf.title,
-                                                    style = MaterialTheme.typography.headlineSmall,
-                                                    fontWeight = FontWeight.Bold,
-                                                )
-                                                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                                    items(shelf.items) { entry ->
-                                                        entry.info()?.let { info ->
-                                                            Column(
-                                                                Modifier
-                                                                    .width(if (wide) 174.dp else 152.dp)
-                                                                    .clickable { openItem(entry) },
-                                                                verticalArrangement = Arrangement.spacedBy(7.dp),
-                                                            ) {
-                                                                environment.Artwork(
-                                                                    info.artwork,
-                                                                    info.title,
-                                                                    Modifier
-                                                                        .size(if (wide) 174.dp else 152.dp)
-                                                                        .clip(
-                                                                            if (info.kind ==
-                                                                                "artist"
-                                                                            ) {
-                                                                                CircleShape
-                                                                            } else {
-                                                                                RoundedCornerShape(8.dp)
-                                                                            },
-                                                                        ).background(panel),
-                                                                )
-                                                                Text(
-                                                                    info.title,
-                                                                    maxLines = 2,
-                                                                    overflow = TextOverflow.Ellipsis,
-                                                                    fontWeight = FontWeight.SemiBold,
-                                                                )
-                                                                if (info.subtitle.isNotBlank()) {
-                                                                    Text(
-                                                                        info.subtitle,
-                                                                        color = muted,
-                                                                        style = MaterialTheme.typography.bodySmall,
-                                                                        maxLines = 2,
-                                                                        overflow = TextOverflow.Ellipsis,
-                                                                    )
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
+                                            val featured = index == 0 && (page != "home" || frontendId.isNotEmpty())
+                                            EditorialShelf(shelf, page, featured, wide, environment, ::openItem)
+                                        }
+                                    }
+                                    if (page == "radio" && "radio" in ui.player.capabilities && current.id.isNotBlank()) {
+                                        item {
+                                            TextButton(onClick = { (ui.player as? UiPlaybackControls)?.startTrackRadio() }) {
+                                                Text("Start a station from this song")
                                             }
                                         }
                                     }
@@ -622,11 +651,13 @@ private fun Roselight(
                                 else -> {
                                     if (page == "search") {
                                         if (!wide) {
-                                            item { SearchInput(query, { query = it }, Modifier.fillMaxWidth()) }
+                                            item { SearchInput(query, { query = it }, Modifier.fillMaxWidth().padding(bottom = 10.dp)) }
                                         }
                                         if (frontendBridge && frontendId.isNotEmpty()) {
                                             item {
-                                                SearchScopes(frontendTitle.ifBlank { "Catalog" }, librarySearch) { librarySearch = it }
+                                                Box(Modifier.padding(bottom = 12.dp)) {
+                                                    SearchScopes(frontendTitle.ifBlank { "Catalog" }, librarySearch) { librarySearch = it }
+                                                }
                                             }
                                         }
                                         if (!wide && query.isBlank() && !librarySearch && frontendId.isNotEmpty()) {
@@ -636,43 +667,54 @@ private fun Roselight(
                                     if (page == "collection") {
                                         item {
                                             collection?.let { info ->
-                                                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                                                    IconButton(
-                                                        onClick = { navigate(collectionOrigin) },
-                                                    ) { Glyph("back", stringResource(Res.string.back)) }
-                                                    environment.Artwork(
-                                                        info.artwork,
-                                                        info.title,
-                                                        Modifier
-                                                            .size(
-                                                                if (wide) 240.dp else 220.dp,
-                                                            ).align(Alignment.CenterHorizontally)
-                                                            .clip(RoundedCornerShape(8.dp))
-                                                            .background(panel),
+                                                if (androidCollection) {
+                                                    AndroidCollectionHeader(
+                                                        info = info,
+                                                        artist = info.kind == "artist" || (info.kind == "local" && librarySection == "artists"),
+                                                        tracks = collectionTracks,
+                                                        player = ui.player,
+                                                        artwork = environment,
+                                                        back = ::backFromCollection,
                                                     )
-                                                    Text(
-                                                        info.title,
-                                                        style = MaterialTheme.typography.headlineLarge,
-                                                        fontWeight = FontWeight.Bold,
-                                                    )
-                                                    if (info.subtitle.isNotBlank()) Text(info.subtitle, color = muted)
-                                                    if (collectionTracks.isNotEmpty()) {
-                                                        Row(
-                                                            Modifier.fillMaxWidth(),
-                                                            verticalAlignment = Alignment.CenterVertically,
-                                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                                        ) {
-                                                            Text(
-                                                                formatTime(collectionTracks.sumOf { it.duration }),
-                                                                color = muted,
-                                                                style = MaterialTheme.typography.bodySmall,
-                                                            )
-                                                            PlayButton(
-                                                                false,
-                                                                "playTracks" in ui.player.capabilities,
-                                                                { ui.player.playTracks(collectionTracks) },
-                                                                56,
-                                                            )
+                                                } else {
+                                                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                                        IconButton(
+                                                            onClick = ::backFromCollection,
+                                                        ) { Glyph("back", stringResource(Res.string.back)) }
+                                                        environment.Artwork(
+                                                            info.artwork,
+                                                            info.title,
+                                                            Modifier
+                                                                .size(
+                                                                    if (wide) 240.dp else 220.dp,
+                                                                ).align(Alignment.CenterHorizontally)
+                                                                .clip(RoundedCornerShape(8.dp))
+                                                                .background(panel),
+                                                        )
+                                                        Text(
+                                                            info.title,
+                                                            style = MaterialTheme.typography.headlineLarge,
+                                                            fontWeight = FontWeight.Bold,
+                                                        )
+                                                        if (info.subtitle.isNotBlank()) Text(info.subtitle, color = muted)
+                                                        if (collectionTracks.isNotEmpty()) {
+                                                            Row(
+                                                                Modifier.fillMaxWidth(),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                            ) {
+                                                                Text(
+                                                                    formatTime(collectionTracks.sumOf { it.duration }),
+                                                                    color = muted,
+                                                                    style = MaterialTheme.typography.bodySmall,
+                                                                )
+                                                                PlayButton(
+                                                                    false,
+                                                                    "playTracks" in ui.player.capabilities,
+                                                                    { ui.player.playTracks(collectionTracks) },
+                                                                    56,
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -694,6 +736,7 @@ private fun Roselight(
                                         }
                                     }
                                     if (page == "search") {
+                                        if (results.albums.isNotEmpty()) item { EditorialHeading("Albums", Modifier.padding(top = 14.dp)) }
                                         items(
                                             results.albums,
                                         ) { album ->
@@ -703,6 +746,7 @@ private fun Roselight(
                                                 ::open,
                                             )
                                         }
+                                        if (results.artists.isNotEmpty()) item { EditorialHeading("Artists", Modifier.padding(top = 14.dp)) }
                                         items(
                                             results.artists,
                                         ) { artist ->
@@ -712,6 +756,7 @@ private fun Roselight(
                                                 ::open,
                                             )
                                         }
+                                        if (results.playlists.isNotEmpty()) item { EditorialHeading("Playlists", Modifier.padding(top = 14.dp)) }
                                         items(
                                             results.playlists,
                                         ) { playlist ->
@@ -723,45 +768,60 @@ private fun Roselight(
                                         }
                                     }
                                     val groups = if (page == "library") libraryGroups(library, librarySection) else emptyList()
-                                    if (groups.isNotEmpty()) {
+                                    if (artistList) {
+                                        items(groups) { group ->
+                                            val info = CollectionInfo("artist", "", group.title, "", group.cover)
+                                            AppleCatalogRow(info, environment) {
+                                                collectionOrigin = "library"
+                                                navigate("collection")
+                                                collection = info.copy(kind = "local")
+                                                collectionTracks = group.tracks
+                                            }
+                                        }
+                                    } else if (groups.isNotEmpty()) {
                                         val columns = if (wide) 4 else 2
                                         items(groups.chunked(columns)) { row ->
-                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (albumGrid) 10.dp else 12.dp)) {
                                                 row.forEach { group ->
-                                                    Column(
-                                                        Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable {
-                                                            collectionOrigin = "library"
-                                                            navigate("collection")
-                                                            collection = CollectionInfo("local", "", group.title, group.artist, group.cover)
-                                                            collectionTracks = group.tracks
-                                                        },
-                                                        verticalArrangement = Arrangement.spacedBy(5.dp),
-                                                    ) {
-                                                        val shape =
-                                                            if (librarySection ==
-                                                                "artists"
-                                                            ) {
-                                                                CircleShape
-                                                            } else {
-                                                                RoundedCornerShape(8.dp)
-                                                            }
-                                                        environment.Artwork(
-                                                            group.cover,
-                                                            group.title,
-                                                            Modifier
-                                                                .fillMaxWidth()
-                                                                .aspectRatio(1f)
-                                                                .clip(shape)
-                                                                .background(panel),
-                                                        )
-                                                        Text(group.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                                        if (group.artist.isNotBlank()) {
-                                                            Text(
-                                                                group.artist,
-                                                                color = muted,
-                                                                maxLines = 1,
-                                                                overflow = TextOverflow.Ellipsis,
+                                                    val openGroup = {
+                                                        collectionOrigin = "library"
+                                                        navigate("collection")
+                                                        collection = CollectionInfo("local", "", group.title, group.artist, group.cover)
+                                                        collectionTracks = if (librarySection == "artists") group.tracks else group.tracks.withAlbumArtwork(group.cover)
+                                                    }
+                                                    if (albumGrid) {
+                                                        AndroidAlbumTile(group.title, group.artist, group.cover, environment, Modifier.weight(1f), openGroup)
+                                                    } else {
+                                                        Column(
+                                                            Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable(onClick = openGroup),
+                                                            verticalArrangement = Arrangement.spacedBy(5.dp),
+                                                        ) {
+                                                            val shape =
+                                                                if (librarySection ==
+                                                                    "artists"
+                                                                ) {
+                                                                    CircleShape
+                                                                } else {
+                                                                    RoundedCornerShape(8.dp)
+                                                                }
+                                                            environment.Artwork(
+                                                                group.cover,
+                                                                group.title,
+                                                                Modifier
+                                                                    .fillMaxWidth()
+                                                                    .aspectRatio(1f)
+                                                                    .clip(shape)
+                                                                    .background(panel),
                                                             )
+                                                            Text(group.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                            if (group.artist.isNotBlank()) {
+                                                                Text(
+                                                                    group.artist,
+                                                                    color = muted,
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis,
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -791,7 +851,9 @@ private fun Roselight(
                                                 }
                                             }
                                         }
-                                    if (tracks.isEmpty() && groups.isEmpty() && !loading &&
+                                    val hasCollections = page == "search" &&
+                                        (results.albums.isNotEmpty() || results.artists.isNotEmpty() || results.playlists.isNotEmpty())
+                                    if (tracks.isEmpty() && groups.isEmpty() && !hasCollections && !loading &&
                                         !failed &&
                                         !(page == "search" && !wide && query.isBlank() && !librarySearch && frontendId.isNotEmpty())
                                     ) {
@@ -810,8 +872,33 @@ private fun Roselight(
                                             )
                                         }
                                     }
+                                    if (page == "search" && tracks.isNotEmpty()) item { EditorialHeading("Songs", Modifier.padding(top = 14.dp)) }
                                     items(tracks.indices.toList()) { index ->
                                         val track = tracks[index]
+                                        if (albumDetail) {
+                                            AndroidAlbumTrack(track, index + 1, track.id == playback.track.id, ui.player) {
+                                                ui.player.playTracks(tracks, index)
+                                            }
+                                            return@items
+                                        }
+                                        if (android && page != "queue") {
+                                            AppleCatalogRow(
+                                                info = CollectionInfo("track", track.id, track.title, track.artist, track.artwork),
+                                                artwork = environment,
+                                                active = track.id == playback.track.id,
+                                                enabled = "playTracks" in ui.player.capabilities,
+                                                trailing = if ("addToQueue" in ui.player.capabilities) {
+                                                    {
+                                                        IconButton(onClick = { ui.player.addToQueue(listOf(track)) }) {
+                                                            Glyph("add", stringResource(Res.string.add_queue), Modifier.size(20.dp))
+                                                        }
+                                                    }
+                                                } else {
+                                                    null
+                                                },
+                                            ) { ui.player.playTracks(tracks, index) }
+                                            return@items
+                                        }
                                         Row(
                                             Modifier.fillMaxWidth().clickable(
                                                 enabled =
@@ -912,22 +999,48 @@ private fun Roselight(
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .widthIn(max = 520.dp)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                            .then(if (android) Modifier.background(MaterialTheme.colorScheme.surface) else Modifier
+                                .widthIn(max = 520.dp).padding(horizontal = 12.dp, vertical = 8.dp)),
+                        verticalArrangement = Arrangement.spacedBy(if (android) 0.dp else 7.dp),
                     ) {
                         if (current.id.isNotBlank()) {
-                            MiniPlayer(ui.player, playback, current, environment, dark) { expanded = true }
+                            if (android) {
+                                AndroidMiniPlayer(
+                                    ui.player,
+                                    playback,
+                                    current,
+                                    environment,
+                                    artworkTransition.playerArtworkTransition(current.id, this@AnimatedVisibility),
+                                ) { expanded = true }
+                            } else {
+                                MiniPlayer(ui.player, playback, current, environment, dark) { expanded = true }
+                            }
                         }
-                        GlassDock(page, compactDock && page != "search", dark, ::navigate)
+                        if (android) {
+                            AndroidNavigationTabs(if (page == "collection") collectionOrigin else page, ::navigate)
+                        } else {
+                            GlassDock(page, compactDock && page != "search", dark, ::navigate)
+                        }
                     }
                 }
-                AnimatedVisibility(
+                if (environment.platform == "android") {
+                    AndroidNowPlaying(
+                        expanded = expanded,
+                        player = ui.player,
+                        playback = playback,
+                        track = current,
+                        artwork = environment,
+                        context = context,
+                        artworkTransition = artworkTransition,
+                        close = { expanded = false },
+                    )
+                } else AnimatedVisibility(
                     visible = expanded,
                     enter = fadeIn(tween(240)) + slideInVertically(tween(320)) { it / 3 },
                     exit = fadeOut(tween(210)) + slideOutVertically(tween(275)) { it / 3 },
                 ) {
                     MusicTheme(true) {
+                        var showLyrics by remember { mutableStateOf(false) }
                         Box(Modifier.fillMaxSize().background(Color(0xFF24161D))) {
                             environment.Artwork(
                                 current.artwork,
@@ -951,12 +1064,17 @@ private fun Roselight(
                                         style = MaterialTheme.typography.labelLarge,
                                         maxLines = 1,
                                     )
+                                    IconButton(onClick = { showLyrics = !showLyrics }) {
+                                        Glyph("lyrics", "Lyrics", tint = if (showLyrics) accent else Color.White)
+                                    }
                                     IconButton(onClick = {
                                         expanded = false
                                         navigate("queue")
                                     }) { Glyph("queue", stringResource(Res.string.queue)) }
                                 }
-                                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                if (showLyrics) {
+                                    PlayerLyrics(current, playback, ui.player, context, Modifier.weight(1f))
+                                } else BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                                     val artSize = minOf(maxWidth, maxHeight, 440.dp)
                                     Crossfade(
                                         current.artwork to current.title,
@@ -969,11 +1087,13 @@ private fun Roselight(
                                 PluginSeekBar(ui.player)
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text(formatTime(playback.position), color = muted, style = MaterialTheme.typography.labelSmall)
-                                    Text(
-                                        "-" + formatTime(current.duration - playback.position),
-                                        color = muted,
-                                        style = MaterialTheme.typography.labelSmall,
-                                    )
+                                    if (current.duration > 0) {
+                                        Text(
+                                            "-" + formatTime((current.duration - playback.position).coerceAtLeast(0)),
+                                            color = muted,
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    }
                                 }
                                 Row(
                                     Modifier.fillMaxWidth(),
@@ -1031,12 +1151,12 @@ internal fun SearchInput(
 ) {
     Row(
         modifier
-            .height(if (compact) 34.dp else 44.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(panel)
-            .padding(horizontal = 16.dp),
+            .height(if (compact) 34.dp else 40.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(start = 10.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Glyph("search", stringResource(Res.string.search), Modifier.size(if (compact) 15.dp else 18.dp), muted)
         BasicTextField(
@@ -1046,6 +1166,7 @@ internal fun SearchInput(
                 1f,
             ),
             singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             textStyle =
                 MaterialTheme.typography.bodyLarge.copy(
                     color = foreground,
@@ -1059,6 +1180,11 @@ internal fun SearchInput(
                 }
             },
         )
+        if (query.isNotEmpty()) {
+            IconButton(onClick = { search("") }, modifier = Modifier.size(36.dp)) {
+                Glyph("close", "Clear search", Modifier.size(16.dp), muted)
+            }
+        }
     }
 }
 
@@ -1068,33 +1194,7 @@ private fun CatalogRow(
     info: CollectionInfo,
     open: (CollectionInfo) -> Unit,
 ) {
-    Row(
-        Modifier.fillMaxWidth().clickable {
-            open(info)
-        },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        environment.Artwork(
-            info.artwork,
-            info.title,
-            Modifier
-                .size(56.dp)
-                .clip(
-                    if (info.kind ==
-                        "artist"
-                    ) {
-                        CircleShape
-                    } else {
-                        RoundedCornerShape(8.dp)
-                    },
-                ).background(panel),
-        )
-        Column {
-            Text(info.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (info.subtitle.isNotBlank()) Text(info.subtitle, color = muted, style = MaterialTheme.typography.bodySmall)
-        }
-    }
+    AppleCatalogRow(info, environment) { open(info) }
 }
 
 @Composable

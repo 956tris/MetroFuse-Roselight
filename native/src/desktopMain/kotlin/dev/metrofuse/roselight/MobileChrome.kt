@@ -5,10 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -32,26 +30,28 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-internal fun MobileLibraryLinks(onSelect: (String) -> Unit) {
+internal fun MobileLibraryLinks(includePlaylists: Boolean, onSelect: (String) -> Unit) {
     val colors = MaterialTheme.colorScheme
+    val sections = listOf("artists" to "Artists", "albums" to "Albums", "songs" to "Songs") +
+        if (includePlaylists) listOf("playlists" to "Playlists") else emptyList()
     Column {
-        listOf("artists" to "Artists", "albums" to "Albums", "songs" to "Songs").forEach { (section, title) ->
+        sections.forEach { (section, title) ->
             val icon =
                 when (section) {
                     "artists" -> "profile"
-                    "albums" -> "library"
+                    "albums", "playlists" -> "library"
                     else -> "note"
                 }
             Row(
-                Modifier.fillMaxWidth().height(49.dp).clickable { onSelect(section) },
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                Modifier.fillMaxWidth().height(48.dp).clickable { onSelect(section) },
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Glyph(icon, "", Modifier.size(23.dp), colors.primary)
-                Text(title, Modifier.weight(1f), fontSize = 19.sp)
+                Text(title, Modifier.weight(1f), fontSize = 17.sp)
                 Glyph("forward", "", Modifier.size(14.dp), colors.onSurfaceVariant.copy(alpha = 0.65f))
             }
-            HorizontalDivider(Modifier.padding(start = 37.dp), color = colors.outlineVariant.copy(alpha = 0.75f))
+            HorizontalDivider(Modifier.padding(start = 35.dp), color = colors.outlineVariant.copy(alpha = 0.62f))
         }
     }
 }
@@ -103,22 +103,21 @@ private val categories =
 @Composable
 internal fun SearchBrowse(onCategory: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Browse Categories", fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+        EditorialHeading("Browse Categories")
         categories.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { (name, start, stop) ->
                     Box(
                         Modifier
                             .weight(1f)
-                            .height(92.dp)
-                            .clip(RoundedCornerShape(9.dp))
+                            .height(96.dp)
+                            .clip(RoundedCornerShape(8.dp))
                             .background(Brush.linearGradient(listOf(Color(start), Color(stop))))
                             .clickable { onCategory(name) },
                     ) {
-                        CategoryArtwork()
                         Text(
                             name,
-                            Modifier.align(Alignment.BottomStart).padding(10.dp),
+                            Modifier.align(Alignment.BottomStart).padding(horizontal = 12.dp, vertical = 10.dp),
                             color = Color.White,
                             fontSize = 19.sp,
                             fontWeight = FontWeight.Bold,
@@ -128,10 +127,4 @@ internal fun SearchBrowse(onCategory: (String) -> Unit) {
             }
         }
     }
-}
-
-@Composable
-private fun BoxScope.CategoryArtwork() {
-    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0x25000000), Color.Transparent))))
-    Glyph("note", "", Modifier.align(Alignment.CenterEnd).padding(end = 12.dp).size(61.dp), Color.White.copy(alpha = 0.23f))
 }
