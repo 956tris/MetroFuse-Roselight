@@ -8,11 +8,17 @@ The glass surfaces use Compose gradients, shadows, translucent borders and artwo
 
 ## Install
 
-Use [MetroFuse UI SDK preview 003](https://github.com/956tris/MetroFuse/releases/tag/v10.0.0-ui-sdk-preview-003) or a compatible host with Compose ABI `kotlin-2.4.21_compose-1.13.0-beta02_api-1.1.0`.
+Use [MetroFuse KMP Beta](https://github.com/956tris/MetroFuse/releases) with API 1.1.0 and Compose ABI `kotlin-2.4.21_compose-1.13.0-beta02_api-1.1.0`. Source selection requires the host `ui.frontends/v1` service. UI SDK preview 003 can render this interface but cannot switch sources from Roselight.
 
-- On Android, import `roselight.apk` from MetroFuse **Settings → Plugins → Import or update plugin**. The system package installer is for the separate host APK.
+- On Android, import `roselight.apk` from MetroFuse **Settings → Plugins → Import or update plugin**. **Do not install this plugin APK with Android's package installer.** Install the separate MetroFuse application APK, then import the plugin inside that app.
 - On desktop, import `roselight.jar` through the same Plugins screen.
 - Enable Roselight Music and choose it under **App interface**. The host's restore icon at the top right returns to the built-in interface.
+
+## Migration and beta limitations
+
+Back up your library, playlists and settings before updating the host or importing new plugins. Return to the original interface during migration, update the MetroFuse host first, and import Roselight 1.0.1 afterward. Use plugins built for the matching API and Compose ABI; incompatible native plugins can fail to load or crash the app. Re-enable Roselight after confirming that the original interface works.
+
+MetroFuse KMP Beta and this interface may be unstable, crash, or have incomplete features. Migration can cause data loss. Source libraries, radio, account synchronization, lyrics and playback depend on the selected provider and host capabilities. Roselight 1.0.1 passed its build, navigation tests and package-isolation checks; live rendering and playback were not verified for this version. Use the host's restore icon to return to the original interface if a screen misbehaves.
 
 ## Build
 
