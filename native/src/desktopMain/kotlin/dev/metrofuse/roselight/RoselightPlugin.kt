@@ -145,6 +145,20 @@ class RoselightPlugin : NativePlugin {
                 override fun Content(context: UiContext) = Roselight(context, context = pluginContext)
             },
         )
+        context.registerUi(
+            "ui.settings",
+            object : NativeScreen {
+                @Composable
+                override fun Content(context: UiContext) = RoselightSettingsScreen(context, pluginContext)
+            },
+        )
+        context.registerUi(
+            "ui.plugins",
+            object : NativeScreen {
+                @Composable
+                override fun Content(context: UiContext) = RoselightPluginsScreen(context, pluginContext)
+            },
+        )
     }
 }
 
@@ -158,14 +172,14 @@ private val foreground: Color
     @Composable get() = MaterialTheme.colorScheme.onSurface
 
 @Composable
-private fun MusicTheme(
+internal fun MusicTheme(
     dark: Boolean,
     content: @Composable () -> Unit,
 ) {
     val colors =
         if (dark) {
             darkColorScheme(
-                primary = Color(0xFFFF496C),
+                primary = Color(0xFFFA243C),
                 onPrimary = Color.White,
                 background = Color.Black,
                 surface = Color(0xFF1C1C1E),
@@ -175,11 +189,11 @@ private fun MusicTheme(
             )
         } else {
             lightColorScheme(
-                primary = Color(0xFFD41943),
+                primary = Color(0xFFD60017),
                 onPrimary = Color.White,
                 background = Color(0xFFFFFFFF),
-                surface = Color(0xFFFBFBFC),
-                surfaceVariant = Color(0xFFF0EFF1),
+                surface = Color(0xFFF5F5F7),
+                surfaceVariant = Color(0xFFEBEAEF),
                 onSurface = Color(0xFF18181A),
                 onSurfaceVariant = Color(0xFF66656C),
             )
@@ -483,7 +497,7 @@ private fun Roselight(
                                         if (wide) {
                                             32.dp
                                         } else if (android) {
-                                            androidTabHeight + if (current.id.isBlank()) 12.dp else androidMiniPlayerHeight + 12.dp
+                                            androidTabHeight + if (current.id.isBlank()) 24.dp else androidMiniPlayerHeight + 28.dp
                                         } else if (current.id.isBlank()) {
                                             88.dp
                                         } else {
@@ -999,9 +1013,9 @@ private fun Roselight(
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .then(if (android) Modifier.background(MaterialTheme.colorScheme.surface) else Modifier
-                                .widthIn(max = 520.dp).padding(horizontal = 12.dp, vertical = 8.dp)),
-                        verticalArrangement = Arrangement.spacedBy(if (android) 0.dp else 7.dp),
+                            .widthIn(max = 520.dp)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
                     ) {
                         if (current.id.isNotBlank()) {
                             if (android) {
@@ -1010,6 +1024,7 @@ private fun Roselight(
                                     playback,
                                     current,
                                     environment,
+                                    dark,
                                     artworkTransition.playerArtworkTransition(current.id, this@AnimatedVisibility),
                                 ) { expanded = true }
                             } else {
@@ -1017,7 +1032,12 @@ private fun Roselight(
                             }
                         }
                         if (android) {
-                            AndroidNavigationTabs(if (page == "collection") collectionOrigin else page, ::navigate)
+                            AndroidNavigationTabs(
+                                if (page == "collection") collectionOrigin else page,
+                                compactDock && page != "search",
+                                dark,
+                                ::navigate,
+                            )
                         } else {
                             GlassDock(page, compactDock && page != "search", dark, ::navigate)
                         }

@@ -1,5 +1,8 @@
 package dev.metrofuse.roselight
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -52,36 +56,77 @@ import dev.metrofuse.sdk.resources.search
 import dev.metrofuse.sdk.resources.shuffle
 import org.jetbrains.compose.resources.stringResource
 
-internal val androidTabHeight = 56.dp
-internal val androidMiniPlayerHeight = 64.dp
+internal val androidTabHeight = 60.dp
+internal val androidMiniPlayerHeight = 58.dp
 
 @Composable
-internal fun AndroidNavigationTabs(page: String, go: (String) -> Unit) {
+internal fun AndroidNavigationTabs(
+    page: String,
+    condensed: Boolean,
+    dark: Boolean,
+    go: (String) -> Unit,
+) {
     val palette = MaterialTheme.colorScheme
-    val tabs = listOf(
-        Triple("home", stringResource(Res.string.home), PlayerControlArt.TabHome),
-        Triple("new", "New", PlayerControlArt.TabNew),
-        Triple("radio", "Radio", PlayerControlArt.TabRadio),
-        Triple("library", "Library", PlayerControlArt.TabLibrary),
-        Triple("search", stringResource(Res.string.search), PlayerControlArt.TabSearch),
-    )
-    Box(Modifier.fillMaxWidth().height(androidTabHeight).background(palette.surface)) {
-        Row(Modifier.fillMaxWidth().fillMaxHeight()) {
-            tabs.forEach { (id, label, icon) ->
-                val active = id == page
-                val tint = if (active) palette.primary else palette.onSurfaceVariant
-                Column(
-                    Modifier.weight(1f).fillMaxHeight().semantics { selected = active }
-                        .clickable(role = Role.Tab) { go(id) },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    PlayerControlIcon(icon, null, tint, Modifier.size(28.dp))
-                    Text(label, color = tint, fontSize = 11.sp, fontWeight = FontWeight.Medium, lineHeight = 13.sp, maxLines = 1)
+    val height by animateDpAsState(if (condensed) 48.dp else androidTabHeight, spring(dampingRatio = 0.85f, stiffness = 395f))
+    val primaryTabs =
+        listOf(
+            Triple("home", stringResource(Res.string.home), PlayerControlArt.TabHome),
+            Triple("new", "New", PlayerControlArt.TabNew),
+            Triple("radio", "Radio", PlayerControlArt.TabRadio),
+            Triple("library", "Library", PlayerControlArt.TabLibrary),
+        )
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+        GlassFrame(dark, cornerRadius = 30, modifier = Modifier.weight(1f)) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(height)
+                    .background(glassFill(dark))
+                    .padding(4.dp),
+            ) {
+                primaryTabs.forEach { (id, label, icon) ->
+                    val active = id == page
+                    val tint by animateColorAsState(if (active) palette.primary else palette.onSurface)
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(CircleShape)
+                            .background(if (active) palette.onSurface.copy(alpha = 0.085f) else Color.Transparent)
+                            .semantics { selected = active }
+                            .clickable(role = Role.Tab) { go(id) },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        PlayerControlIcon(icon, if (condensed) label else null, tint, Modifier.size(23.dp))
+                        if (!condensed) {
+                            Text(
+                                label,
+                                color = tint,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                lineHeight = 12.sp,
+                                maxLines = 1,
+                            )
+                        }
+                    }
                 }
             }
         }
-        HorizontalDivider(color = palette.outlineVariant.copy(alpha = 0.62f))
+        GlassFrame(dark, cornerRadius = 30) {
+            val searchActive = page == "search"
+            val searchTint by animateColorAsState(if (searchActive) palette.primary else palette.onSurface)
+            Box(
+                Modifier
+                    .size(height)
+                    .background(glassFill(dark))
+                    .semantics { selected = searchActive }
+                    .clickable(role = Role.Tab) { go("search") },
+                contentAlignment = Alignment.Center,
+            ) {
+                PlayerControlIcon(PlayerControlArt.TabSearch, stringResource(Res.string.search), searchTint, Modifier.size(24.dp))
+            }
+        }
     }
 }
 

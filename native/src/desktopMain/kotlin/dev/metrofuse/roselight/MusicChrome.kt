@@ -233,19 +233,20 @@ private fun SidebarItem(
 }
 
 @Composable
-private fun GlassFrame(
+internal fun GlassFrame(
     dark: Boolean,
+    cornerRadius: Int = 30,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val shape = RoundedCornerShape(30.dp)
+    val shape = RoundedCornerShape(cornerRadius.dp)
     val rim =
         if (dark) {
-            listOf(Color(0x65FFFFFF), Color(0x10FFFFFF), Color(0x3AFFFFFF))
+            listOf(Color(0x70FFFFFF), Color(0x16FFFFFF), Color(0x42FFFFFF))
         } else {
-            listOf(Color.White, Color(0x55A3A0AD), Color.White)
+            listOf(Color.White, Color(0x60A3A0AD), Color.White)
         }
-    Box(modifier.shadow(10.dp, shape).clip(shape)) {
+    Box(modifier.shadow(12.dp, shape).clip(shape)) {
         content()
         Box(Modifier.matchParentSize().border(1.dp, Brush.verticalGradient(rim), shape))
     }
@@ -261,7 +262,7 @@ internal fun MiniPlayer(
     open: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    GlassFrame(dark, Modifier.fillMaxWidth()) {
+    GlassFrame(dark, cornerRadius = 28, modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -297,7 +298,7 @@ internal fun GlassDock(
     val colors = MaterialTheme.colorScheme
     val height by animateDpAsState(if (condensed) 47.dp else 60.dp, spring(dampingRatio = 0.85f, stiffness = 395f))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-        GlassFrame(dark, Modifier.weight(1f)) {
+        GlassFrame(dark, modifier = Modifier.weight(1f)) {
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -348,12 +349,12 @@ internal fun GlassDock(
     }
 }
 
-private fun glassFill(dark: Boolean): Brush =
+internal fun glassFill(dark: Boolean): Brush =
     Brush.verticalGradient(
         if (dark) {
-            listOf(Color(0xED45454B), Color(0xE9242428), Color(0xEB2C2C30))
+            listOf(Color(0xE63E3E44), Color(0xDE1E1E22), Color(0xE427272B))
         } else {
-            listOf(Color(0xF5FFFFFF), Color(0xD7F5F4F8), Color(0xE7FFFFFF))
+            listOf(Color(0xF5FFFFFF), Color(0xDCF3F2F7), Color(0xEBFFFFFF))
         },
     )
 

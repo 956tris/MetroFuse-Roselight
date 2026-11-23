@@ -153,44 +153,65 @@ internal fun AndroidMiniPlayer(
     playback: PlaybackState,
     track: Track,
     artwork: UiArtworkEnvironment,
+    dark: Boolean,
     artworkModifier: Modifier,
     open: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    Row(
-        Modifier.fillMaxWidth().height(androidMiniPlayerHeight)
-            .background(colors.surface).clickable(onClick = open).padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Crossfade(
-            track.artwork to track.title,
-            modifier = Modifier.size(48.dp).then(artworkModifier).clip(RoundedCornerShape(5.dp)),
-            label = "mini player artwork",
-        ) { (url, title) -> artwork.Artwork(url, title, Modifier.fillMaxSize()) }
-        Text(
-            track.title,
-            Modifier.weight(1f).padding(start = 8.dp),
-            color = colors.onSurface,
-            fontWeight = FontWeight.Medium,
-            fontSize = 15.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        PlayerButton(
-            if (playback.playing) PlayerControlArt.MiniPause else PlayerControlArt.MiniPlay,
-            stringResource(if (playback.playing) Res.string.pause else Res.string.play),
-            "toggle" in player.capabilities,
-            tint = colors.onSurface,
-            action = player::toggle,
-        )
-        Spacer(Modifier.width(8.dp))
-        PlayerButton(
-            PlayerControlArt.MiniNext,
-            stringResource(Res.string.next),
-            "next" in player.capabilities,
-            tint = colors.onSurface,
-            action = player::next,
-        )
+    GlassFrame(dark, cornerRadius = 26, modifier = Modifier.fillMaxWidth()) {
+        if (track.artwork.isNotBlank()) {
+            Box(Modifier.matchParentSize()) {
+                artwork.Artwork(track.artwork, null, Modifier.fillMaxSize().blur(26.dp))
+                Box(Modifier.fillMaxSize().background(if (dark) Color(0xCC1C1C1E) else Color(0xCCF5F4F8)))
+            }
+        } else {
+            Box(Modifier.matchParentSize().background(glassFill(dark)))
+        }
+        Row(
+            Modifier.fillMaxWidth().height(androidMiniPlayerHeight)
+                .clickable(onClick = open).padding(start = 8.dp, end = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Crossfade(
+                track.artwork to track.title,
+                modifier = Modifier.size(44.dp).then(artworkModifier).clip(RoundedCornerShape(10.dp)),
+                label = "mini player artwork",
+            ) { (url, title) -> artwork.Artwork(url, title, Modifier.fillMaxSize()) }
+            Column(Modifier.weight(1f).padding(start = 10.dp, end = 6.dp)) {
+                Text(
+                    track.title,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (track.artist.isNotBlank()) {
+                    Text(
+                        track.artist,
+                        color = colors.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            PlayerButton(
+                if (playback.playing) PlayerControlArt.MiniPause else PlayerControlArt.MiniPlay,
+                stringResource(if (playback.playing) Res.string.pause else Res.string.play),
+                "toggle" in player.capabilities,
+                tint = colors.onSurface,
+                action = player::toggle,
+            )
+            Spacer(Modifier.width(6.dp))
+            PlayerButton(
+                PlayerControlArt.MiniNext,
+                stringResource(Res.string.next),
+                "next" in player.capabilities,
+                tint = colors.onSurface,
+                action = player::next,
+            )
+        }
     }
 }
 

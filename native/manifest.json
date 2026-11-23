@@ -1,7 +1,7 @@
 {
   "id": "dev.metrofuse.roselight.native",
   "name": "Roselight Music",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "author": "MetroFuse",
   "api": "1.1.0",
   "runtime": "kotlin",
